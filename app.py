@@ -65,6 +65,9 @@ def set_custom_style():
 # Splash Video
 # ----------------------------
 def show_splash_video(video_path):
+    if not os.path.exists(video_path):
+        # Video file not found, skip splash video silently
+        return
     with open(video_path, "rb") as file:
         video_base64 = base64.b64encode(file.read()).decode()
     splash_html = f"""
@@ -103,7 +106,7 @@ movies = pd.read_pickle("artificats/movie_list.pkl")
 file_id = "1a-bZTigBMJ8bZidn_yBi8IG2zq_H98r8"  # google drive file id
 output = "artificats/similary_list.pkl"
 
-show_splash_video("artificats/splash_video.mp4")
+#show_splash_video("artificats/splash_video.mp4")
 
 
 
@@ -111,11 +114,19 @@ if not os.path.exists(output):
     url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, output, quiet=False)
 
-similarity = pickle.load(open(output, "rb"))
+    
+@st.cache_data
+def load_similarity(path):
+    return pickle.load(open(path, "rb"))
+
+similarity = load_similarity(output)
+
+
 
 # ----------------------------
 # OMDB Data
 # ----------------------------
+@st.cache_data(show_spinner=False)
 def fetch_movie_details(title):
     if not OMDB_API_KEY:
         return {}
@@ -126,6 +137,8 @@ def fetch_movie_details(title):
     except:
         return {}
 
+
+@st.cache_data(show_spinner=False)
 def fetch_poster(title):
     if not OMDB_API_KEY:
         return placeholder_url
@@ -136,6 +149,7 @@ def fetch_poster(title):
         return data.get("Poster", placeholder_url) if data.get("Response") == "True" else placeholder_url
     except:
         return placeholder_url
+
 
 # ----------------------------
 # Recommend Movies
@@ -217,12 +231,12 @@ if 'current_user' not in st.session_state:
     st.session_state.current_user = None
 
 # Splash Video
-if st.session_state.show_splash:
-    show_splash_video("artificats/splash_video.mp4")  
+# if st.session_state.show_splash:
+#     show_splash_video("artificats/splash_video.mp4")  
 
-    st.session_state.show_splash = False
+#     st.session_state.show_splash = False
 
-set_custom_style()
+# set_custom_style()
 
 # ----------------------------
 # UI Layout
