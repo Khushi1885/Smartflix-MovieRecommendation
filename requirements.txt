@@ -1,0 +1,6 @@
+streamlit 
+pandas
+requests
+pickle5
+gdown
+python-dotenv
