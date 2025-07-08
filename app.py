@@ -103,6 +103,9 @@ movies = pd.read_pickle("artificats/movie_list.pkl")
 file_id = "1a-bZTigBMJ8bZidn_yBi8IG2zq_H98r8"  # google drive file id
 output = "artificats/similary_list.pkl"
 
+show_splash_video("artificats/splash_video.mp4")
+
+
 if not os.path.exists(output):
     url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, output, quiet=False)
@@ -214,7 +217,7 @@ if 'current_user' not in st.session_state:
 
 # Splash Video
 if st.session_state.show_splash:
-    show_splash_video("Black and Orange Modern Welcome to My Channel Video.mp4")
+    show_splash_video("artificats\splash_video.mp4")
     st.session_state.show_splash = False
 
 set_custom_style()
