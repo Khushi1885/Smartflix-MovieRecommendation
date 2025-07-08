@@ -106,6 +106,7 @@ output = "artificats/similary_list.pkl"
 show_splash_video("artificats/splash_video.mp4")
 
 
+
 if not os.path.exists(output):
     url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, output, quiet=False)
