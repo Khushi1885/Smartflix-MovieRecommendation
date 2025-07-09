@@ -1381,71 +1381,32 @@
 
 
 #-------------------------------------------------------------------------
+# app.py
+
 import streamlit as st
 import pandas as pd
 import pickle
+import sqlite3
 import hashlib
 from datetime import datetime, date
-import base64
-import time
+import os
 import requests
 import urllib.parse
-import os
-import streamlit.components.v1 as components
 import random
-import sqlite3
+import gdown
+from dotenv import load_dotenv
+import streamlit.components.v1 as components
 
 # ----------------------------
-# SQLite DB Setup for Users
+# Load .env
 # ----------------------------
-
-conn = sqlite3.connect("users.db", check_same_thread=False)
-c = conn.cursor()
-c.execute('''
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    created_at TEXT NOT NULL
-)
-''')
-conn.commit()
+load_dotenv()
+OMDB_API_KEY = os.getenv("OMDB_API_KEY")
+placeholder_url = "https://via.placeholder.com/200x300?text=No+Poster"
 
 # ----------------------------
-# Helper functions for user auth
+# Custom Style
 # ----------------------------
-
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def user_exists(email):
-    c.execute("SELECT 1 FROM users WHERE email = ?", (email,))
-    return c.fetchone() is not None
-
-def add_user(name, email, password):
-    hashed_pw = hash_password(password)
-    created_at = datetime.now().isoformat()
-    try:
-        c.execute("INSERT INTO users (name, email, password, created_at) VALUES (?, ?, ?, ?)",
-                  (name, email, hashed_pw, created_at))
-        conn.commit()
-        return True
-    except sqlite3.IntegrityError:
-        return False
-
-def validate_login(email, password):
-    hashed_pw = hash_password(password)
-    c.execute("SELECT name FROM users WHERE email = ? AND password = ?", (email, hashed_pw))
-    row = c.fetchone()
-    if row:
-        return row[0]
-    return None
-
-# ----------------------------
-# Custom style function (unchanged)
-# ----------------------------
-
 def set_custom_style():
     st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
@@ -1469,72 +1430,44 @@ def set_custom_style():
         button:hover {
             box-shadow: 0 0 10px #E50914;
         }
-        ::-webkit-scrollbar {
-            height: 8px;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #E50914;
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #121212;
-        }
     </style>
     """, unsafe_allow_html=True)
 
 # ----------------------------
-# Load movie data and similarity matrix (unchanged)
+# Data Loaders
 # ----------------------------
-
 movies = pd.read_pickle("artificats/movie_list.pkl")
 
-import gdown
-file_id = "1a-bZTigBMJ8bZidn_yBi8IG2zq_H98r8"
-output = "artificats/similary_list.pkl"
-
-if not os.path.exists(output):
-    url = f"https://drive.google.com/uc?id={file_id}"
-    gdown.download(url, output, quiet=False)
+similarity_path = "artificats/similary_list.pkl"
+if not os.path.exists(similarity_path):
+    file_id = "1a-bZTigBMJ8bZidn_yBi8IG2zq_H98r8"
+    gdown.download(f"https://drive.google.com/uc?id={file_id}", similarity_path, quiet=False)
 
 @st.cache_data
 def load_similarity(path):
     return pickle.load(open(path, "rb"))
 
-similarity = load_similarity(output)
+similarity = load_similarity(similarity_path)
 
 # ----------------------------
-# OMDB API helpers (unchanged)
+# Movie Helpers
 # ----------------------------
-
-OMDB_API_KEY = os.getenv("OMDB_API_KEY")
-placeholder_url = "https://via.placeholder.com/200x300?text=No+Poster"
-
-@st.cache_data(show_spinner=False)
-def fetch_movie_details(title):
-    if not OMDB_API_KEY:
-        return {}
-    try:
-        url = f"http://www.omdbapi.com/?t={urllib.parse.quote(title)}&apikey={OMDB_API_KEY}"
-        response = requests.get(url)
-        return response.json()
-    except:
-        return {}
-
-@st.cache_data(show_spinner=False)
+@st.cache_data
 def fetch_poster(title):
-    if not OMDB_API_KEY:
-        return placeholder_url
     try:
         url = f"http://www.omdbapi.com/?t={urllib.parse.quote(title)}&apikey={OMDB_API_KEY}"
-        response = requests.get(url)
-        data = response.json()
-        return data.get("Poster", placeholder_url) if data.get("Response") == "True" else placeholder_url
+        r = requests.get(url).json()
+        return r.get("Poster", placeholder_url)
     except:
         return placeholder_url
 
-# ----------------------------
-# Recommendation logic (unchanged)
-# ----------------------------
+@st.cache_data
+def fetch_movie_details(title):
+    try:
+        url = f"http://www.omdbapi.com/?t={urllib.parse.quote(title)}&apikey={OMDB_API_KEY}"
+        return requests.get(url).json()
+    except:
+        return {}
 
 def recommend(movie):
     if movie not in movies['title'].values:
@@ -1543,26 +1476,53 @@ def recommend(movie):
     distances = sorted(list(enumerate(similarity[idx])), key=lambda x: x[1], reverse=True)[1:6]
     titles, posters = [], []
     for i in distances:
-        title = movies.iloc[i[0]].title
-        poster = fetch_poster(title)
-        titles.append(title)
-        posters.append(poster)
+        t = movies.iloc[i[0]].title
+        titles.append(t)
+        posters.append(fetch_poster(t))
     return titles, posters
 
-# ----------------------------
-# Movie of the day logic (unchanged)
-# ----------------------------
-
 def get_movie_of_the_day():
-    today = str(date.today())
-    seed = int(hashlib.sha256(today.encode()).hexdigest(), 16) % (10 ** 8)
+    seed = int(hashlib.sha256(str(date.today()).encode()).hexdigest(), 16) % (10 ** 8)
     random.seed(seed)
     return random.choice(movies['title'].values)
 
 # ----------------------------
-# Streamlit session state initialization (unchanged)
+# SQLite Auth
 # ----------------------------
+def get_conn():
+    return sqlite3.connect("users.db")
 
+def init_db():
+    with get_conn() as conn:
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            email TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            password TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )""")
+
+def hash_pw(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def add_user(name, email, password):
+    with get_conn() as conn:
+        conn.execute("INSERT INTO users VALUES (?, ?, ?, ?)",
+            (email, name, hash_pw(password), datetime.now().isoformat()))
+
+def user_exists(email):
+    with get_conn() as conn:
+        return conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone() is not None
+
+def validate_login(email, password):
+    with get_conn() as conn:
+        r = conn.execute("SELECT name, password FROM users WHERE email=?", (email,)).fetchone()
+        return r[0] if r and r[1] == hash_pw(password) else None
+
+# ----------------------------
+# Init State
+# ----------------------------
+init_db()
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'current_user' not in st.session_state:
@@ -1571,34 +1531,22 @@ if 'current_user' not in st.session_state:
 set_custom_style()
 
 # ----------------------------
-# UI Layout
+# Sidebar Navigation
 # ----------------------------
-
 st.sidebar.title("🎬 Movie App Navigation")
 menu = st.sidebar.radio("Go to", ["Login", "Sign Up", "Dashboard"])
 
 if menu == "Dashboard" and st.session_state.logged_in:
     st.sidebar.markdown("---")
     st.sidebar.markdown("🎁 Movie of the Day")
-    movie_of_day = get_movie_of_the_day()
-    poster = fetch_poster(movie_of_day)
-    st.sidebar.image(poster, caption=movie_of_day, use_container_width=True)
+    motd = get_movie_of_the_day()
+    st.sidebar.image(fetch_poster(motd), caption=motd, use_container_width=True)
+    trailer_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(motd + ' trailer')}"
+    st.sidebar.markdown(f'<a href="{trailer_url}" target="_blank">▶ Watch Trailer</a>', unsafe_allow_html=True)
 
-    trailer_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(movie_of_day + ' trailer')}"
-    st.sidebar.markdown(f"""
-    <a href="{trailer_url}" target="_blank" style="
-        display: inline-block;
-        margin-top: 10px;
-        padding: 8px 12px;
-        background-color: #E50914;
-        color: white;
-        border-radius: 6px;
-        font-weight: 600;
-        text-align: center;
-        text-decoration: none;
-    ">▶ Watch Trailer</a>
-    """, unsafe_allow_html=True)
-
+# ----------------------------
+# Login Page
+# ----------------------------
 if menu == "Login":
     st.title("🔐 Login")
     email = st.text_input("Email")
@@ -1608,167 +1556,124 @@ if menu == "Login":
         if name:
             st.session_state.logged_in = True
             st.session_state.current_user = name
-            st.success(f"Welcome back, {name}!")
+            st.success(f"Welcome, {name}!")
         else:
             st.error("Invalid credentials.")
 
+# ----------------------------
+# Sign Up Page
+# ----------------------------
 elif menu == "Sign Up":
-    st.title("📝 Sign Up")
+    st.title("📝 Register")
     name = st.text_input("Name")
     email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-    confirm_password = st.text_input("Confirm Password", type="password")
+    pw1 = st.text_input("Password", type="password")
+    pw2 = st.text_input("Confirm Password", type="password")
     if st.button("Register"):
         if user_exists(email):
             st.warning("Email already registered.")
-        elif password != confirm_password:
-            st.error("Passwords do not match.")
+        elif pw1 != pw2:
+            st.error("Passwords don't match.")
         else:
-            if add_user(name, email, password):
-                st.success("Registration successful! Please login.")
-            else:
-                st.error("Registration failed. Try again.")
+            add_user(name, email, pw1)
+            st.success("Registration complete!")
 
+# ----------------------------
+# Dashboard
+# ----------------------------
 elif menu == "Dashboard":
     if not st.session_state.logged_in:
-        st.warning("Login first!")
+        st.warning("Please login to continue.")
     else:
         st.markdown(f"""
         <div style="background-color:#141414; padding:12px 20px; border-radius:8px; display:flex; align-items:center; gap:12px; margin-bottom:20px;">
             <div style="width:50px; height:50px; background:#E50914; border-radius:50%; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:22px; color:white;">
                 {st.session_state.current_user[0].upper()}
             </div>
-            <h2 style="margin:0; color:#E50914; font-family:'Poppins', sans-serif;">
-                Welcome back, {st.session_state.current_user}!
-            </h2>
+            <h2 style="margin:0; color:#E50914;">Welcome, {st.session_state.current_user}!</h2>
         </div>
-        """ , unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-        selected_movie = st.selectbox("🎥 Select a movie", movies['title'].values, key="selected_movie")
-
+        selected_movie = st.selectbox("🎥 Select a movie", movies['title'].values)
         if st.button("Show Recommendations"):
-            with st.spinner("Fetching your movies... 🍿"):
-                titles, posters = recommend(selected_movie)
+            titles, posters = recommend(selected_movie)
 
             if titles:
                 modal_html = """
                 <style>
-                .modal-overlay {
-                    position: fixed;
-                    top: 0; left: 0;
-                    width: 100vw; height: 100vh;
-                    background: rgba(0, 0, 0, 0.7);
-                    backdrop-filter: blur(8px);
-                    display: none;
-                    z-index: 10000;
-                    justify-content: center;
-                    align-items: center;
-                }
-                .modal-overlay.active {
-                    display: flex;
-                }
-                .modal-content {
-                    background-color: #1f1f1f;
-                    color: white;
-                    border-radius: 10px;
-                    width: 90%;
-                    max-width: 320px;
-                    padding: 15px 20px;
-                    box-shadow: 0 0 20px #e50914;
-                    position: relative;
-                    font-family: 'Poppins', sans-serif;
-                    text-align: center;
-                    animation: fadeIn 0.3s ease-in-out;
-                }
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: scale(0.9); }
-                    to { opacity: 1; transform: scale(1); }
-                }
-                .modal-close {
-                    position: absolute;
-                    top: 8px; right: 12px;
-                    font-size: 22px;
-                    cursor: pointer;
-                    color: #fff;
-                }
-                .movie-poster {
-                    width: 150px;
-                    border-radius: 8px;
-                    margin-bottom: 10px;
-                    object-fit: cover;
-                }
-                .movie-container {
-                    display: flex;
-                    overflow-x: auto;
-                    gap: 20px;
-                    padding: 10px 0;
-                }
-                .movie-card {
-                    width: 140px;
-                    cursor: pointer;
-                    transition: transform 0.3s ease;
-                    background: rgba(255,255,255,0.05);
-                    border-radius: 12px;
-                    box-shadow: 0 0 10px rgba(0,0,0,0.5);
-                    text-align: center;
-                    padding-bottom: 10px;
-                }
-                .movie-card:hover {
-                    transform: scale(1.07);
-                    box-shadow: 0 0 15px #E50914;
-                }
+                    .movie-container {
+                        display: flex;
+                        overflow-x: auto;
+                        gap: 20px;
+                        padding: 20px 0;
+                    }
+                    .movie-card {
+                        width: 140px;
+                        background: #1f1f1f;
+                        padding: 10px;
+                        border-radius: 10px;
+                        text-align: center;
+                        box-shadow: 0 0 10px rgba(0,0,0,0.5);
+                        transition: transform 0.3s;
+                    }
+                    .movie-card:hover {
+                        transform: scale(1.05);
+                        box-shadow: 0 0 15px #E50914;
+                    }
+                    .movie-title {
+                        color: #E50914;
+                        margin-top: 8px;
+                        font-weight: bold;
+                        font-size: 14px;
+                    }
+                    .trailer-btn {
+                        margin-top: 4px;
+                        font-size: 12px;
+                        color: white;
+                        background: #E50914;
+                        padding: 4px 6px;
+                        border-radius: 4px;
+                        display: inline-block;
+                        text-decoration: none;
+                    }
                 </style>
-                <div id="modal" class="modal-overlay active">
-                    <div class="modal-content" tabindex="0">
-                        <div class="modal-close" onclick="document.getElementById('modal').classList.remove('active')">&times;</div>
-                        <h3>Recommended Movies</h3>
-                        <div class="movie-container">
+                <div class="movie-container">
                 """
 
-                for t, p in zip(titles, posters):
-                    encoded_title = urllib.parse.quote(t)
-                    trailer_link = f"https://www.youtube.com/results?search_query={encoded_title}+trailer"
+                for title, poster in zip(titles, posters):
+                    yt_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(title + ' trailer')}"
                     modal_html += f"""
-                    <div class="movie-card" onclick="window.open('{trailer_link}', '_blank')">
-                        <img src="{p}" alt="{t}" class="movie-poster" loading="lazy"/>
-                        <p style="margin:5px 0; font-weight:600;">{t}</p>
+                    <div class="movie-card">
+                        <img src="{poster}" style="width:100%; border-radius:8px;">
+                        <div class="movie-title">{title}</div>
+                        <a class="trailer-btn" href="{yt_url}" target="_blank">▶ Trailer</a>
                     </div>
                     """
 
-                modal_html += """
-                        </div>
-                    </div>
-                </div>
-                <script>
-                // close modal on outside click
-                document.getElementById('modal').addEventListener('click', e => {
-                    if(e.target.id === 'modal'){
-                        e.target.classList.remove('active');
-                    }
-                });
-                // close modal on escape key
-                document.addEventListener('keydown', e => {
-                    if(e.key === "Escape"){
-                        document.getElementById('modal').classList.remove('active');
-                    }
-                });
-                </script>
-                """
-
-                components.html(modal_html, height=420)
+                modal_html += "</div>"
+                components.html(modal_html, height=350)
 
             else:
-                st.warning("Sorry, no recommendations found.")
+                st.error("No recommendations found.")
 
-        if st.button("Logout"):
-            st.session_state.logged_in = False
-            st.session_state.current_user = None
-            st.experimental_rerun()
-
-# Footer / Credits
+# ----------------------------
+# Footer
+# ----------------------------
 st.markdown("""
-<hr>
-<div style="text-align:center; font-size:12px; color:#999; padding-bottom:20px;">
-Made with ❤️ using Streamlit & SQLite<br>© 2025 Movie Recommender
+<style>
+.footer {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    background: #1f1f1f;
+    color: #E50914;
+    text-align: center;
+    padding: 10px;
+    font-size: 13px;
+}
+</style>
+<div class="footer">
+    &copy; 2025 - Smartflix Movie Recommender | Built with ❤️ in Streamlit
 </div>
 """, unsafe_allow_html=True)
