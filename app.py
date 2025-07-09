@@ -1754,15 +1754,37 @@ similarity = load_similarity(output)
 # OMDB Data
 # ----------------------------
 @st.cache_data(show_spinner=False)
+# def fetch_movie_details(title):
+#     if not OMDB_API_KEY:
+#         return {}
+#     try:
+#         url = f"http://www.omdbapi.com/?t={urllib.parse.quote(title)}&apikey={OMDB_API_KEY}"
+#         response = requests.get(url)
+#         return response.json()
+#     except:
+#         return {}
+# ----------------------------
+# OMDB Data
+# ----------------------------
 def fetch_movie_details(title):
     if not OMDB_API_KEY:
+        st.error("OMDB API Key not found!")
         return {}
     try:
         url = f"http://www.omdbapi.com/?t={urllib.parse.quote(title)}&apikey={OMDB_API_KEY}"
         response = requests.get(url)
-        return response.json()
-    except:
+        if response.status_code != 200:
+            st.error(f"OMDB API request failed: {response.status_code}")
+            return {}
+        data = response.json()
+        if data.get("Response") == "False":
+            st.error(f"OMDB API error: {data.get('Error')}")
+            return {}
+        return data
+    except Exception as e:
+        st.error(f"Exception during API call: {str(e)}")
         return {}
+
 
 @st.cache_data(show_spinner=False)
 def fetch_poster(title):
