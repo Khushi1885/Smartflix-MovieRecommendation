@@ -1685,8 +1685,9 @@ import random
 # ----------------------------
 # Load API Key
 # ----------------------------
-OMDB_API_KEY, placeholder_url = st.secrets["OMDB_API_KEY"], "https://via.placeholder.com/200x300?text=No+Poster"
-
+load_dotenv()
+OMDB_API_KEY = os.getenv("OMDB_API_KEY")
+placeholder_url = "https://via.placeholder.com/200x300?text=No+Poster"
 
 # ----------------------------
 # Set Background + Fonts + Theme
