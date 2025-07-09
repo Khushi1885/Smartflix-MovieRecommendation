@@ -1585,7 +1585,7 @@ elif menu == "Dashboard":
     if not st.session_state.logged_in:
         st.warning("Please login to continue.")
     else:
-        # Movie of the Day poster in sidebar
+        # Movie of the Day poster in sidebar (ensure only once here)
         st.sidebar.markdown("---")
         st.sidebar.markdown("🎁 Movie of the Day")
         movie_of_day = get_movie_of_the_day()
@@ -1607,7 +1607,7 @@ elif menu == "Dashboard":
         ">▶ Watch Trailer</a>
         """, unsafe_allow_html=True)
 
-        # Existing Dashboard UI below
+        # Welcome message
         st.markdown(f"""
         <div style="background-color:#141414; padding:12px 20px; border-radius:8px; display:flex; align-items:center; gap:12px; margin-bottom:20px;">
             <div style="width:50px; height:50px; background:#E50914; border-radius:50%; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:22px; color:white;">
@@ -1622,63 +1622,26 @@ elif menu == "Dashboard":
             titles, posters = recommend(selected_movie)
 
             if titles:
-                modal_html = """
-                <style>
-                    .movie-container {
-                        display: flex;
-                        overflow-x: auto;
-                        gap: 20px;
-                        padding: 20px 0;
-                    }
-                    .movie-card {
-                        width: 140px;
-                        background: #1f1f1f;
-                        padding: 10px;
-                        border-radius: 10px;
-                        text-align: center;
-                        box-shadow: 0 0 10px rgba(0,0,0,0.5);
-                        transition: transform 0.3s;
-                    }
-                    .movie-card:hover {
-                        transform: scale(1.05);
-                        box-shadow: 0 0 15px #E50914;
-                    }
-                    .movie-title {
-                        color: #E50914;
-                        margin-top: 8px;
-                        font-weight: bold;
-                        font-size: 14px;
-                    }
-                    .trailer-btn {
-                        margin-top: 4px;
-                        font-size: 12px;
-                        color: white;
-                        background: #E50914;
-                        padding: 4px 6px;
-                        border-radius: 4px;
-                        display: inline-block;
-                        text-decoration: none;
-                    }
-                </style>
-                <div class="movie-container">
-                """
+                # Container to hold movie details on poster click
+                details_container = st.empty()
 
-                for title, poster in zip(titles, posters):
-                    yt_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(title + ' trailer')}"
-                    modal_html += f"""
-                    <div class="movie-card">
-                        <img src="{poster}" style="width:100%; border-radius:8px;">
-                        <div class="movie-title">{title}</div>
-                        <a class="trailer-btn" href="{yt_url}" target="_blank">▶ Trailer</a>
-                    </div>
-                    """
-
-                modal_html += "</div>"
-                components.html(modal_html, height=350)
+                # Create clickable posters with buttons for each recommended movie
+                cols = st.columns(len(titles))
+                for i, (title, poster_url) in enumerate(zip(titles, posters)):
+                    with cols[i]:
+                        if st.button("", key=f"btn_{title}"):
+                            # Show movie details below on click
+                            details_container.markdown(f"""
+                                ### {title}
+                                ![poster]({poster_url})
+                                *More details about the movie can be shown here...*
+                            """)
+                        
+                        # Display poster image under the button (simulate clickable poster)
+                        st.image(poster_url, use_column_width=True)
 
             else:
                 st.error("No recommendations found.")
-
 
 # ----------------------------
 # Footer
