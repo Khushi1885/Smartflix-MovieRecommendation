@@ -1671,7 +1671,7 @@ import pandas as pd
 import pickle
 import sqlite3
 import hashlib
-from datetime import datetime
+from datetime import datetime, date
 import base64
 import time
 import requests
@@ -1680,7 +1680,9 @@ from dotenv import load_dotenv
 import os
 import streamlit.components.v1 as components
 import random
-
+import gdown
+import gspread
+from google.oauth2.service_account import Credentials
 
 # ----------------------------
 # Load API Key
@@ -1729,45 +1731,28 @@ def set_custom_style():
     """, unsafe_allow_html=True)
 
 # ----------------------------
-# Splash Video
-# ----------------------------
-def show_splash_video(video_path):
-    with open(video_path, "rb") as file:
-        video_base64 = base64.b64encode(file.read()).decode()
-    splash_html = f"""
-    <style>
-        .splash-video {{
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            object-fit: cover;
-            z-index: 999999;
-            background: black;
-        }}
-        .main, .sidebar {{
-            visibility: hidden;
-        }}
-    </style>
-    <video autoplay muted playsinline class="splash-video">
-        <source src="data:video/mp4;base64,{video_base64}" type="video/mp4" />
-    </video>
-    """
-    splash = st.empty()
-    splash.markdown(splash_html, unsafe_allow_html=True)
-    time.sleep(6)
-    splash.empty()
-
-# ----------------------------
 # Load Data
 # ----------------------------
 movies = pd.read_pickle("artificats/movie_list.pkl")
-similarity = pickle.load(open("artificats/similary_list.pkl", "rb"))
+
+# Download similarity file from Google Drive if not present locally
+file_id = "1a-bZTigBMJ8bZidn_yBi8IG2zq_H98r8"  # google drive file id
+output = "artificats/similary_list.pkl"
+
+if not os.path.exists(output):
+    url = f"https://drive.google.com/uc?id={file_id}"
+    gdown.download(url, output, quiet=False)
+
+@st.cache_data
+def load_similarity(path):
+    return pickle.load(open(path, "rb"))
+
+similarity = load_similarity(output)
 
 # ----------------------------
 # OMDB Data
 # ----------------------------
+@st.cache_data(show_spinner=False)
 def fetch_movie_details(title):
     if not OMDB_API_KEY:
         return {}
@@ -1778,6 +1763,7 @@ def fetch_movie_details(title):
     except:
         return {}
 
+@st.cache_data(show_spinner=False)
 def fetch_poster(title):
     if not OMDB_API_KEY:
         return placeholder_url
@@ -1804,20 +1790,15 @@ def recommend(movie):
         titles.append(title)
         posters.append(poster)
     return titles, posters
-#--------------------
-#movie of the day
-#--------------------
-from datetime import date
-import hashlib
 
+# ----------------------------
+# Movie of the Day
+# ----------------------------
 def get_movie_of_the_day():
     today = str(date.today())  # e.g., '2025-07-04'
-    # Create a hash of the date to use as a seed
     seed = int(hashlib.sha256(today.encode()).hexdigest(), 16) % (10 ** 8)
     random.seed(seed)
     return random.choice(movies['title'].values)
-
-
 
 # ----------------------------
 # SQLite User Auth
@@ -1861,26 +1842,18 @@ def validate_login(email, password):
 # App State & Init
 # ----------------------------
 init_db()
-if 'show_splash' not in st.session_state:
-    st.session_state.show_splash = True
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'current_user' not in st.session_state:
     st.session_state.current_user = None
 
-# Splash Video
-if st.session_state.show_splash:
-    show_splash_video("Black and Orange Modern Welcome to My Channel Video.mp4")
-    st.session_state.show_splash = False
-
-set_custom_style()
+set_custom_style()  # Uncomment if you want custom styles
 
 # ----------------------------
 # UI Layout
 # ----------------------------
 st.sidebar.title("🎬 Movie App Navigation")
 menu = st.sidebar.radio("Go to", ["Login", "Sign Up", "Dashboard"])
-
 
 # Movie of the Day - show only on Dashboard when logged in
 if menu == "Dashboard" and st.session_state.logged_in:
@@ -1889,9 +1862,7 @@ if menu == "Dashboard" and st.session_state.logged_in:
     movie_of_day = get_movie_of_the_day()
     poster = fetch_poster(movie_of_day)
     st.sidebar.image(poster, caption=movie_of_day, use_container_width=True)
-#Trailer button
-# Trailer button
-    
+
     trailer_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(movie_of_day + ' trailer')}"
     st.sidebar.markdown(f"""
     <a href="{trailer_url}" target="_blank" style="
@@ -1907,8 +1878,7 @@ if menu == "Dashboard" and st.session_state.logged_in:
     ">▶ Watch Trailer</a>
     """, unsafe_allow_html=True)
 
-#login page
-
+# Login page
 if menu == "Login":
     st.title("🔐 Login")
     email = st.text_input("Email")
@@ -1922,8 +1892,7 @@ if menu == "Login":
         else:
             st.error("Invalid credentials.")
 
-
-#signup
+# Sign up page
 elif menu == "Sign Up":
     st.title("📝 Sign Up")
     name = st.text_input("Name")
@@ -1939,14 +1908,11 @@ elif menu == "Sign Up":
             add_user(name, email, password)
             st.success("Registration successful! Please login.")
 
-
-#dashboard
-
+# Dashboard
 elif menu == "Dashboard":
     if not st.session_state.logged_in:
         st.warning("Login first!")
     else:
-        # Header
         st.markdown(f"""
         <div style="background-color:#141414; padding:12px 20px; border-radius:8px; display:flex; align-items:center; gap:12px; margin-bottom:20px;">
             <div style="width:50px; height:50px; background:#E50914; border-radius:50%; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:22px; color:white;">
@@ -1958,10 +1924,8 @@ elif menu == "Dashboard":
         </div>
         """, unsafe_allow_html=True)
 
-        # Movie select box
         selected_movie = st.selectbox("🎥 Select a movie", movies['title'].values, key="selected_movie")
 
-        # Show recommendations button
         if st.button("Show Recommendations"):
             with st.spinner("Fetching your movies... 🍿"):
                 titles, posters = recommend(selected_movie)
@@ -2108,25 +2072,26 @@ elif menu == "Dashboard":
 
             else:
                 st.warning("No recommendations found.")
-#footer 
+
+# Footer
 st.markdown("""
-        <style>
-        .footer {
-            position: fixed;
-            left: 0;
-            bottom: 0;
-            width: 100%;
-            background-color: #1f1f1f;
-            color: #E50914;
-            text-align: center;
-            padding: 10px 0;
-            font-family: 'Poppins', sans-serif;
-            font-size: 14px;
-            box-shadow: 0 -1px 5px rgba(0,0,0,0.5);
-            z-index: 9999;
-        }
-        </style>
-        <div class="footer">
-            2025- Smartflix Movie Recommender  | Powered by Streamlit
-        </div>
-        """, unsafe_allow_html=True)
+    <style>
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: #1f1f1f;
+        color: #E50914;
+        text-align: center;
+        padding: 10px 0;
+        font-family: 'Poppins', sans-serif;
+        font-size: 14px;
+        box-shadow: 0 -1px 5px rgba(0,0,0,0.5);
+        z-index: 9999;
+    }
+    </style>
+    <div class="footer">
+        2025- Smartflix Movie Recommender  | Powered by Streamlit
+    </div>
+""", unsafe_allow_html=True)
