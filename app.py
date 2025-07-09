@@ -1695,7 +1695,7 @@ load_dotenv()
 # st.write("Loaded API Key:", OMDB_API_KEY)
 OMDB_API_KEY = os.getenv("OMDB_API_KEY") or st.secrets.get("OMDB_API_KEY")
 placeholder_url = "https://via.placeholder.com/200x300?text=No+Poster"
-st.write("Loaded API Key:", OMDB_API_KEY)
+#st.write("Loaded API Key:", OMDB_API_KEY)
 
 # st.write("OMDB API Key:", OMDB_API_KEY if OMDB_API_KEY else "No API key found")
 
