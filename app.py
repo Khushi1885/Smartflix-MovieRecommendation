@@ -1638,7 +1638,7 @@ elif menu == "Dashboard":
                             """)
                         
                         # Display poster image under the button (simulate clickable poster)
-                        st.image(poster_url, use_column_width=True)
+                        st.image(poster_url, use_container_width=True)
 
             else:
                 st.error("No recommendations found.")
