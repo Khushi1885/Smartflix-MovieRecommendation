@@ -1390,43 +1390,62 @@ import base64
 import time
 import requests
 import urllib.parse
-from dotenv import load_dotenv
 import os
 import streamlit.components.v1 as components
 import random
-import gdown
-import gspread
-from google.oauth2.service_account import Credentials
-import json
+import sqlite3
 
 # ----------------------------
-# Load environment variables (e.g. OMDB API key)
-# ----------------------------
-load_dotenv()
-OMDB_API_KEY = os.getenv("OMDB_API_KEY")
-placeholder_url = "https://via.placeholder.com/200x300?text=No+Poster"
-
-# ----------------------------
-# Google Sheets Setup for Users
+# SQLite DB Setup for Users
 # ----------------------------
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-
-# Load Google service account credentials from Streamlit secrets
-service_account_info = json.loads(st.secrets["gcp_service_account"]["json"])
-
-credentials = Credentials.from_service_account_info(
-    service_account_info,
-    scopes=SCOPES
+conn = sqlite3.connect("users.db", check_same_thread=False)
+c = conn.cursor()
+c.execute('''
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    created_at TEXT NOT NULL
 )
-
-gc = gspread.authorize(credentials)
-sh = gc.open("users data")  # Google Sheet name — make sure this matches exactly
-worksheet = sh.sheet1
+''')
+conn.commit()
 
 # ----------------------------
-# Custom style function
+# Helper functions for user auth
 # ----------------------------
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def user_exists(email):
+    c.execute("SELECT 1 FROM users WHERE email = ?", (email,))
+    return c.fetchone() is not None
+
+def add_user(name, email, password):
+    hashed_pw = hash_password(password)
+    created_at = datetime.now().isoformat()
+    try:
+        c.execute("INSERT INTO users (name, email, password, created_at) VALUES (?, ?, ?, ?)",
+                  (name, email, hashed_pw, created_at))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+def validate_login(email, password):
+    hashed_pw = hash_password(password)
+    c.execute("SELECT name FROM users WHERE email = ? AND password = ?", (email, hashed_pw))
+    row = c.fetchone()
+    if row:
+        return row[0]
+    return None
+
+# ----------------------------
+# Custom style function (unchanged)
+# ----------------------------
+
 def set_custom_style():
     st.markdown("""
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
@@ -1464,11 +1483,12 @@ def set_custom_style():
     """, unsafe_allow_html=True)
 
 # ----------------------------
-# Load movie data and similarity matrix
+# Load movie data and similarity matrix (unchanged)
 # ----------------------------
 
 movies = pd.read_pickle("artificats/movie_list.pkl")
 
+import gdown
 file_id = "1a-bZTigBMJ8bZidn_yBi8IG2zq_H98r8"
 output = "artificats/similary_list.pkl"
 
@@ -1483,8 +1503,11 @@ def load_similarity(path):
 similarity = load_similarity(output)
 
 # ----------------------------
-# OMDB API helper functions
+# OMDB API helpers (unchanged)
 # ----------------------------
+
+OMDB_API_KEY = os.getenv("OMDB_API_KEY")
+placeholder_url = "https://via.placeholder.com/200x300?text=No+Poster"
 
 @st.cache_data(show_spinner=False)
 def fetch_movie_details(title):
@@ -1510,7 +1533,7 @@ def fetch_poster(title):
         return placeholder_url
 
 # ----------------------------
-# Recommendation logic
+# Recommendation logic (unchanged)
 # ----------------------------
 
 def recommend(movie):
@@ -1527,7 +1550,7 @@ def recommend(movie):
     return titles, posters
 
 # ----------------------------
-# Movie of the day logic
+# Movie of the day logic (unchanged)
 # ----------------------------
 
 def get_movie_of_the_day():
@@ -1537,32 +1560,7 @@ def get_movie_of_the_day():
     return random.choice(movies['title'].values)
 
 # ----------------------------
-# User authentication helpers with Google Sheets
-# ----------------------------
-
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def user_exists(email):
-    users = worksheet.get_all_records()
-    return any(user['email'] == email for user in users)
-
-def add_user(name, email, password):
-    hashed_pw = hash_password(password)
-    created_at = datetime.now().isoformat()
-    # Append row in order: name, email, password (hashed), created_at
-    worksheet.append_row([name, email, hashed_pw, created_at])
-
-def validate_login(email, password):
-    hashed_pw = hash_password(password)
-    users = worksheet.get_all_records()
-    for user in users:
-        if user['email'] == email and user['password'] == hashed_pw:
-            return user['name']
-    return None
-
-# ----------------------------
-# Streamlit session state initialization
+# Streamlit session state initialization (unchanged)
 # ----------------------------
 
 if 'logged_in' not in st.session_state:
@@ -1626,8 +1624,10 @@ elif menu == "Sign Up":
         elif password != confirm_password:
             st.error("Passwords do not match.")
         else:
-            add_user(name, email, password)
-            st.success("Registration successful! Please login.")
+            if add_user(name, email, password):
+                st.success("Registration successful! Please login.")
+            else:
+                st.error("Registration failed. Try again.")
 
 elif menu == "Dashboard":
     if not st.session_state.logged_in:
@@ -1769,6 +1769,6 @@ elif menu == "Dashboard":
 st.markdown("""
 <hr>
 <div style="text-align:center; font-size:12px; color:#999; padding-bottom:20px;">
-Made with ❤️ using Streamlit & Google Sheets<br>© 2025 Movie Recommender
+Made with ❤️ using Streamlit & SQLite<br>© 2025 Movie Recommender
 </div>
 """, unsafe_allow_html=True)
