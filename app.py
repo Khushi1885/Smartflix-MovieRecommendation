@@ -1585,6 +1585,29 @@ elif menu == "Dashboard":
     if not st.session_state.logged_in:
         st.warning("Please login to continue.")
     else:
+        # Movie of the Day poster in sidebar
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("🎁 Movie of the Day")
+        movie_of_day = get_movie_of_the_day()
+        poster = fetch_poster(movie_of_day)
+        st.sidebar.image(poster, caption=movie_of_day, use_container_width=True)
+        
+        trailer_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(movie_of_day + ' trailer')}"
+        st.sidebar.markdown(f"""
+        <a href="{trailer_url}" target="_blank" style="
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 12px;
+            background-color: #E50914;
+            color: white;
+            border-radius: 6px;
+            font-weight: 600;
+            text-align: center;
+            text-decoration: none;
+        ">▶ Watch Trailer</a>
+        """, unsafe_allow_html=True)
+
+        # Existing Dashboard UI below
         st.markdown(f"""
         <div style="background-color:#141414; padding:12px 20px; border-radius:8px; display:flex; align-items:center; gap:12px; margin-bottom:20px;">
             <div style="width:50px; height:50px; background:#E50914; border-radius:50%; display:flex; justify-content:center; align-items:center; font-weight:bold; font-size:22px; color:white;">
@@ -1655,6 +1678,7 @@ elif menu == "Dashboard":
 
             else:
                 st.error("No recommendations found.")
+
 
 # ----------------------------
 # Footer
