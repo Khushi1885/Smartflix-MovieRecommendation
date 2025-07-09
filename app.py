@@ -978,18 +978,19 @@ placeholder_url = "https://via.placeholder.com/200x300?text=No+Poster"
 # ----------------------------
 # Google Sheets Setup for Users
 # ----------------------------
-SERVICE_ACCOUNT_FILE = 'streamlit-userauth-d2f6ec3db520.json'  # <-- Change this to your JSON file path
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+# SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
-credentials = Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE,
+# Streamlit Secrets se service account JSON load karo
+service_account_info = json.loads(st.secrets["gcp_service_account"]["json"])
+
+credentials = service_account.Credentials.from_service_account_info(
+    service_account_info,
     scopes=SCOPES
 )
 
 gc = gspread.authorize(credentials)
 sh = gc.open("users data")  # Your Google Sheet name
 worksheet = sh.sheet1
-
 # ----------------------------
 # Set Background + Fonts + Theme
 # ----------------------------
