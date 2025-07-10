@@ -664,7 +664,7 @@ if 'current_user' not in st.session_state:
 
 # Splash Video
 if st.session_state.show_splash:
-    show_splash_video("artificats\splash_video.mp4")
+    show_splash_video("artificats/splash_video.mp4")
     st.session_state.show_splash = False
 
 set_custom_style()
